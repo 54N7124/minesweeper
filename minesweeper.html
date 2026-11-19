@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>踩地雷</title>
+<style>
+  :root {
+    --bg: #eef1f5;
+    --panel: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7785;
+    --cell: #c9d3df;
+    --cell-hover: #b8c4d3;
+    --open: #f7f9fb;
+    --border: #d5dce4;
+    --accent: #2f6fde;
+    --boom: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft JhengHei", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    user-select: none;
+  }
+  h1 { margin: 0 0 16px; font-size: 28px; letter-spacing: 2px; }
+  .controls {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 16px;
+  }
+  .controls button {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .controls button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .game {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.08);
+    max-width: 100%;
+  }
+  .status {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; gap: 12px;
+  }
+  .counter {
+    font-family: Consolas, monospace;
+    font-size: 22px; font-weight: bold;
+    background: #1f2933; color: #ff5d5d;
+    padding: 4px 10px; border-radius: 6px; min-width: 70px; text-align: center;
+  }
+  #face {
+    font-size: 26px; width: 46px; height: 46px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel); cursor: pointer; line-height: 1;
+  }
+  .board-wrap { overflow-x: auto; }
+  #board {
+    display: grid;
+    gap: 2px;
+    width: max-content;
+    margin: 0 auto;
+  }
+  .cell {
+    width: 30px; height: 30px;
+    background: var(--cell);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 16px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .cell:not(.open):hover { background: var(--cell-hover); }
+  .cell.open { background: var(--open); cursor: default; box-shadow: inset 0 0 0 1px var(--border); }
+  .cell.boom { background: var(--boom); }
+  .cell.wrong { background: #ffd6d6; }
+  .n1 { color: #1e6fd9; } .n2 { color: #2e9a3e; } .n3 { color: #d93a3a; }
+  .n4 { color: #23318f; } .n5 { color: #8a2b2b; } .n6 { color: #1a8a8a; }
+  .n7 { color: #222; }    .n8 { color: #777; }
+  .message { margin-top: 12px; text-align: center; font-size: 18px; min-height: 24px; font-weight: 600; }
+  .help { margin-top: 16px; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.7; }
+  .custom { display: none; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; margin-bottom: 12px; font-size: 14px; }
+  .custom.show { display: flex; }
+  .custom input { width: 60px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; }
+  .best { color: var(--muted); font-size: 13px; text-align: center; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <h1>💣 踩地雷</h1>
+
+  <div class="controls">
+    <button data-level="easy" class="active">初級 9×9</button>
+    <button data-level="medium">中級 16×16</button>
+    <button data-level="hard">高級 30×16</button>
+    <button data-level="custom">自訂</button>
+  </div>
+
+  <div class="custom" id="customPanel">
+    寬 <input type="number" id="cw" min="5" max="50" value="20">
+    高 <input type="number" id="ch" min="5" max="30" value="15">
+    雷 <input type="number" id="cm" min="1" value="50">
+    <button id="customStart" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--panel);cursor:pointer;">開始</button>
+  </div>
+
+  <div class="game">
+    <div class="status">
+      <div class="counter" id="mines" title="剩餘地雷">000</div>
+      <button id="face" title="重新開始">🙂</button>
+      <div class="counter" id="timer" title="時間">000</div>
+    </div>
+    <div class="board-wrap"><div id="board"></div></div>
+    <div class="message" id="message"></div>
+    <div class="best" id="best"></div>
+  </div>
+
+  <div class="help">
+    左鍵：翻開格子　｜　右鍵：插旗 / 取消<br>
+    在已翻開的數字上點擊（或雙擊）：若周圍旗子數相符，自動翻開周圍格子<br>
+    手機：長按插旗　｜　第一下保證不會踩到雷
+  </div>
+
+<script>
+(() => {
+  const LEVELS = {
+    easy:   { w: 9,  h: 9,  m: 10 },
+    medium: { w: 16, h: 16, m: 40 },
+    hard:   { w: 30, h: 16, m: 99 },
+  };
+
+  const boardEl = document.getElementById('board');
+  const minesEl = document.getElementById('mines');
+  const timerEl = document.getElementById('timer');
+  const faceEl = document.getElementById('face');
+  const msgEl = document.getElementById('message');
+  const bestEl = document.getElementById('best');
+  const customPanel = document.getElementById('customPanel');
+
+  let cfg = LEVELS.easy, levelKey = 'easy';
+  let cells = [];        // {mine, open, flag, n, el}
+  let started, over, flags, opened, seconds, timerId;
+
+  const pad = n => String(Math.max(-99, Math.min(999, n))).padStart(3, '0');
+  const idx = (x, y) => y * cfg.w + x;
+
+  function neighbors(i) {
+    const x = i % cfg.w, y = Math.floor(i / cfg.w), out = [];
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < cfg.w && ny < cfg.h) out.push(idx(nx, ny));
+      }
+    return out;
+  }
+
+  function newGame() {
+    clearInterval(timerId);
+    started = false; over = false; flags = 0; opened = 0; seconds = 0;
+    timerEl.textContent = pad(0);
+    minesEl.textContent = pad(cfg.m);
+    faceEl.textContent = '🙂';
+    msgEl.textContent = '';
+    showBest();
+
+    boardEl.innerHTML = '';
+    boardEl.style.gridTemplateColumns = `repeat(${cfg.w}, 30px)`;
+    cells = [];
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < cfg.w * cfg.h; i++) {
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.i = i;
+      frag.appendChild(el);
+      cells.push({ mine: false, open: false, flag: false, n: 0, el });
+    }
+    boardEl.appendChild(frag);
+  }
+
+  // Place mines after the first click, keeping the clicked cell and its neighbours safe.
+  function placeMines(safeIdx) {
+    const forbidden = new Set([safeIdx, ...neighbors(safeIdx)]);
+    // If the board is too dense, only guarantee the clicked cell itself.
+    if (cfg.w * cfg.h - forbidden.size < cfg.m) forbidden.clear(), forbidden.add(safeIdx);
+    const pool = [];
+    for (let i = 0; i < cells.length; i++) if (!forbidden.has(i)) pool.push(i);
+    for (let k = 0; k < cfg.m; k++) {
+      const r = k + Math.floor(Math.random() * (pool.length - k));
+      [pool[k], pool[r]] = [pool[r], pool[k]];
+      cells[pool[k]].mine = true;
+    }
+    cells.forEach((c, i) => { c.n = neighbors(i).filter(j => cells[j].mine).length; });
+  }
+
+  function startTimer() {
+    started = true;
+    timerId = setInterval(() => { seconds++; timerEl.textContent = pad(seconds); }, 1000);
+  }
+
+  function reveal(i) {
+    const stack = [i];
+    while (stack.length) {
+      const k = stack.pop();
+      const c = cells[k];
+      if (c.open || c.flag) continue;
+      c.open = true; opened++;
+      c.el.classList.add('open');
+      if (c.mine) { lose(k); return; }
+      if (c.n) { c.el.textContent = c.n; c.el.classList.add('n' + c.n); }
+      else stack.push(...neighbors(k));
+    }
+  }
+
+  function open(i) {
+    if (over) return;
+    const c = cells[i];
+    if (c.flag) return;
+    if (!started) { placeMines(i); startTimer(); }
+    if (c.open) { chord(i); }
+    else reveal(i);
+    checkWin();
+  }
+
+  function chord(i) {
+    const c = cells[i];
+    if (!c.open || !c.n) return;
+    const nb = neighbors(i);
+    if (nb.filter(j => cells[j].flag).length !== c.n) return;
+    for (const j of nb) { if (over) return; reveal(j); }
+  }
+
+  function toggleFlag(i) {
+    if (over) return;
+    const c = cells[i];
+    if (c.open) return;
+    c.flag = !c.flag;
+    flags += c.flag ? 1 : -1;
+    c.el.textContent = c.flag ? '🚩' : '';
+    minesEl.textContent = pad(cfg.m - flags);
+  }
+
+  function lose(boomIdx) {
+    over = true;
+    clearInterval(timerId);
+    faceEl.textContent = '😵';
+    msgEl.textContent = '💥 踩到地雷了！再試一次吧';
+    cells.forEach((c, i) => {
+      if (c.mine && !c.flag) { c.el.classList.add('open'); c.el.textContent = '💣'; }
+      if (!c.mine && c.flag) { c.el.classList.add('wrong'); c.el.textContent = '❌'; }
+    });
+    cells[boomIdx].el.classList.add('boom');
+  }
+
+  function checkWin() {
+    if (over || opened !== cells.length - cfg.m) return;
+    over = true;
+    clearInterval(timerId);
+    faceEl.textContent = '😎';
+    cells.forEach(c => { if (c.mine && !c.flag) { c.flag = true; c.el.textContent = '🚩'; } });
+    minesEl.textContent = pad(0);
+    msgEl.textContent = `🎉 恭喜過關！用時 ${seconds} 秒`;
+    if (levelKey !== 'custom') {
+      const key = 'ms-best-' + levelKey;
+      try {
+        const prev = Number(localStorage.getItem(key));
+        if (!prev || seconds < prev) {
+          localStorage.setItem(key, seconds);
+          msgEl.textContent += '（新紀錄！）';
+        }
+      } catch (e) {}
+      showBest();
+    }
+  }
+
+  function showBest() {
+    bestEl.textContent = '';
+    if (levelKey === 'custom') return;
+    try {
+      const b = localStorage.getItem('ms-best-' + levelKey);
+      if (b) bestEl.textContent = `最佳紀錄：${b} 秒`;
+    } catch (e) {}
+  }
+
+  // ---- input handling ----
+  const cellIndex = e => {
+    const t = e.target.closest('.cell');
+    return t ? Number(t.dataset.i) : -1;
+  };
+
+  let longPressTimer = null, longPressed = false;
+
+  boardEl.addEventListener('click', e => {
+    if (longPressed) { longPressed = false; return; }
+    const i = cellIndex(e);
+    if (i >= 0) open(i);
+  });
+  boardEl.addEventListener('dblclick', e => {
+    const i = cellIndex(e);
+    if (i >= 0 && !over) { chord(i); checkWin(); }
+  });
+  boardEl.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const i = cellIndex(e);
+    if (i >= 0) toggleFlag(i);
+  });
+  boardEl.addEventListener('mousedown', e => {
+    if (e.button === 0 && !over && cellIndex(e) >= 0) faceEl.textContent = '😮';
+  });
+  document.addEventListener('mouseup', () => { if (!over) faceEl.textContent = '🙂'; });
+
+  // Long press for touch devices
+  boardEl.addEventListener('touchstart', e => {
+    const i = cellIndex(e);
+    if (i < 0) return;
+    longPressed = false;
+    longPressTimer = setTimeout(() => {
+      longPressed = true;
+      toggleFlag(i);
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 400);
+  }, { passive: true });
+  ['touchend', 'touchmove', 'touchcancel'].forEach(ev =>
+    boardEl.addEventListener(ev, () => clearTimeout(longPressTimer), { passive: true }));
+
+  faceEl.addEventListener('click', newGame);
+
+  document.querySelectorAll('.controls button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const lv = btn.dataset.level;
+      if (lv === 'custom') { customPanel.classList.add('show'); return; }
+      customPanel.classList.remove('show');
+      levelKey = lv; cfg = LEVELS[lv];
+      newGame();
+    });
+  });
+
+  document.getElementById('customStart').addEventListener('click', () => {
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(Number(v) || lo)));
+    const w = clamp(document.getElementById('cw').value, 5, 50);
+    const h = clamp(document.getElementById('ch').value, 5, 30);
+    const m = clamp(document.getElementById('cm').value, 1, w * h - 1);
+    document.getElementById('cw').value = w;
+    document.getElementById('ch').value = h;
+    document.getElementById('cm').value = m;
+    levelKey = 'custom'; cfg = { w, h, m };
+    newGame();
+  });
+
+  document.addEventListener('keydown', e => { if (e.key === 'F2' || e.key === 'r') newGame(); });
+
+  newGame();
+})();
+</script>
+</body>
+</html>
